@@ -119,24 +119,38 @@ if __name__ == "__main__":
     for i, r in msstats.iterrows():
         seq = UniprotSequence(r["Protein"], True)
         msstats.at[i, "Accession"] = str(seq)
+        msstats.at[i, "iso"] = seq.isotype
+        msstats.at[i, "Main Accession"] = seq.accession
     accessions = msstats["Accession"].unique()
     parser = UniprotParser(accessions, True)
 
     data = []
     for i in parser.parse("tab"):
         frame = pd.read_csv(StringIO(i), sep="\t")
-        frame = frame.rename(columns={frame.columns[-2]: "query"})
-        data.append(frame)
-    data = pd.concat(data, ignore_index=True)
+
+        frame = frame.rename(columns={frame.columns[-2]: "query", frame.columns[-1]: "isomap"})
+        for _, r in frame.iterrows():
+            if "," in r["query"]:
+                for q in r["query"].split(","):
+                    if msstats["Accession"].str.contains(q).any():
+                        r2 = r.copy()
+                        r2["query"] = q
+                        data.append(r2)
+            else:
+                if msstats["Accession"].str.contains(r["query"]).any():
+                    data.append(r)
+
+    data = pd.DataFrame(data)
     unmatched = []
     for a in accessions:
-        if a not in data["query"].values:
+        if not data["query"].str.contains(a).any():
             unmatched.append(a)
     if unmatched:
         print("Non-Uniprot ID found:", unmatched)
 
     result = msstats.merge(data, left_on="Accession", right_on="query")
     result.to_csv(output_file, index=False)
+    print("Finished.")
 
 
 
